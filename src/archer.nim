@@ -341,5 +341,6 @@ proc runPrompt() =
   executeFile(file, mode)
 
 
-
+when isMainModule:
+  runPrompt()
 

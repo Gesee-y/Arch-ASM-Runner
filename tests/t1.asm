@@ -1,0 +1,5 @@
+READ A
+READ B
+
+ADD A, B
+PRINT A
