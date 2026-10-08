@@ -99,7 +99,7 @@ proc writeVersion() = quit(VERSION & " " & HOST_PLATFORM & "\n", QuitSuccess)
 proc toOp(op: string): ASMOp =
   let rawOp = op.toLowerAscii()
   case rawOp:
-  of "exit": opHalt
+  of "exit", "stop": opHalt
   of "load": opLoad
   of "store": opStore
   of "push": opPush
@@ -108,7 +108,7 @@ proc toOp(op: string): ASMOp =
   of "sub": opSub
   of "mul", "mpy": opMul
   of "div": opDiv
-  of "branch": opBranch
+  of "branch", "br": opBranch
   of "bgt": opBGT
   of "bge": opBGE
   of "bez": opBEZ
