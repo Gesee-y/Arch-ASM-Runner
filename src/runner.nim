@@ -79,11 +79,14 @@ const
    (c) 2026 Kaptue Talom
 
 Usage:
-  archer [command]
+  archer [options] [command]
 
 Command:
   r project.asm: Run the ASM program
-   """
+  
+Options:
+  -m, --mode: How the ASM code will be run, expected values are 0, 1, 2, 3
+  """
 
 proc writeHelp() = quit(USAGE, QuitSuccess)
 proc writeVersion() = quit(VERSION & " " & HOST_PLATFORM & "\n", QuitSuccess)
@@ -113,6 +116,14 @@ proc toOp(op: string): ASMOp =
   of "read": opRead
   of "print": opPrint
   else: opUnknown
+
+proc toMode(s: string): ASMExecMode =
+  case s:
+  of "0": return aemZeroAddr
+  of "1": return aemOneAddr
+  of "2": return aemTwoAddr
+  of "3": return aemThreeAddr
+  else: assert false, "Unknown mode `" & s & "`."
 
 proc parseToken(str: string): Token =
   try:
@@ -294,4 +305,41 @@ proc executeFile(filename: string, mode: ASMExecMode) =
 
   runASM(ctx, instructions)
 
-proc runPrompt()
+proc runPrompt() =
+  var p = initOptParser()
+  var args: seq[string] = @[]
+  var mode = aemTwoAddr
+
+  while true:
+    p.next()
+
+    case p.kind:
+    of cmdEnd: break
+    of cmdShortOption, cmdLongOption:
+      case p.key:
+        of "m", "mode":
+          mode = toMode(p.val)
+        else: discard
+    of cmdArgument:
+      args.add(p.key)
+
+  
+  if args.len < 1:
+    writeHelp()
+
+  let cmd = args[0].toLower
+  if cmd != "r": 
+    echo "Unknown command."
+    echo USAGE
+    quit(1)
+
+  if args.len < 2:
+    echo "Command `r` need a file to process."
+    quit(1)
+
+  let file = args[1]
+  executeFile(file, mode)
+
+
+
+
