@@ -1,6 +1,9 @@
   # ######################################################################################################################################################### #
- # ################################################################### PARSER ASM ########################################################################## #
+ # ################################################################### ARCHER ASM ########################################################################## #
 # ######################################################################################################################################################### #
+
+#
+# 
 
 import std/[tables, strutils, parseopt]
 
@@ -92,9 +95,9 @@ Options:
 proc writeHelp() = quit(USAGE, QuitSuccess)
 proc writeVersion() = quit(VERSION & " " & HOST_PLATFORM & "\n", QuitSuccess)
 
-  # ######################################################################################################
- # #
-# ########################################################################################################
+  # ######################################################################################################################################################### #
+ # ######################################################################## UTILS ########################################################################## #
+# ######################################################################################################################################################### #
 
 proc toOp(op: string): ASMOp =
   let rawOp = op.toLowerAscii()
@@ -126,8 +129,21 @@ proc toMode(s: string): ASMExecMode =
   of "3": return aemThreeAddr
   else: assert false, "Unknown mode `" & s & "`."
 
+proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 1): int =
+  ctx.symbols.getOrDefault(sym, def)
+
+proc tryFetchSymbol(ctx: CodeGenCtx, sym: string): int =
+  assert sym in ctx.symbols, "Register `" & sym & "` doesn't exist."
+  ctx.symbols[sym]
+
+  # ######################################################################################################################################################### #
+ # ######################################################################## PARSER ######################################################################### #
+# ######################################################################################################################################################### #
+
 proc parseToken(str: string): Token =
   try:
+    # We try to parse the string into an `int
+    # If it fail it means we are encountering a register
     let val = parseInt(str)
     return Token(kind: immToken, value: val)
   except:
@@ -143,6 +159,8 @@ proc parseInstruction(instruction: string): seq[Token] =
   for s in instruction:
     case s:
       of ' ':
+        # If no operator was found yet and the current string is not empty
+        # Allow to add space before instruction like `    ADD ...`
         if not opFound and current != "":
           op = toOp(current)
           lastCurrent = current
@@ -150,12 +168,19 @@ proc parseInstruction(instruction: string): seq[Token] =
           opFound = true
           result[^1] = Token(kind: cmdToken, op: op)
       of ',':
+        # For multiple operand to be passed to the operators
         assert current != "", "Empty operand found."
         result[^1].children.add(parseToken(current))
         current = ""
       of ':':
+        # Used for labels.
+        # Only labels are followed by `:`
+        # `lastCurrent` is there in case we add `Lab :` where the space would make it be parsed as a cmd
         result[0] = Token(kind: labToken, name: if current == "": lastCurrent else: current)
         result.setLen(2)
+
+        # We reset `opFound` to make sure that if the label was parsed as an operator, it's fixed
+        # Allows syntax `L1: ADD ...`
         opFound = false
         current = ""
       of 'a'..'z', 'A'..'Z', '0'..'9':
@@ -163,7 +188,9 @@ proc parseInstruction(instruction: string): seq[Token] =
       of '\n': discard
       else: discard
 
-  if current != "": 
+  # In case there is a string that has not been parsed
+  # Mostly the last string in the instruction
+  if current != "":
     if result[^1].kind != noToken:
       result[^1].children.add(parseToken(current))
     else:
@@ -172,12 +199,9 @@ proc parseInstruction(instruction: string): seq[Token] =
   
   if result[^1].kind == noToken: discard result.pop()
 
-proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 1): int =
-  ctx.symbols.getOrDefault(sym, def)
-
-proc tryFetchSymbol(ctx: CodeGenCtx, sym: string): int =
-  assert sym in ctx.symbols, "Register `" & sym & "` doesn't exist."
-  ctx.symbols[sym]
+  # ######################################################################################################################################################### #
+ # ######################################################################## EXECUTION ###################################################################### #
+# ######################################################################################################################################################### #
 
 proc getTokenValue(ctx: CodeGenCtx, tok: Token): int =
   case tok.kind:
@@ -302,6 +326,9 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
   else: 
     assert false, "Unknown operation."
 
+  # ######################################################################################################################################################### #
+ # ########################################################################## RUNNER ####################################################################### #
+# ######################################################################################################################################################### #
 
 proc runASM(ctx: var CodeGenCtx, instructions: seq[string]) =
   ctx.pc = 0
@@ -354,6 +381,9 @@ proc runPrompt() =
   let file = args[1]
   executeFile(file, mode)
 
+  # ######################################################################################################################################################### #
+ # ####################################################################### ENTRY POINT ##################################################################### #
+# ######################################################################################################################################################### #
 
 when isMainModule:
   runPrompt()
