@@ -156,13 +156,16 @@ proc parseInstruction(instruction: string): seq[Token] =
       of ':':
         result[0] = Token(kind: labToken, name: if current == "": lastCurrent else: current)
         result.setLen(2)
+        current = ""
       of 'a'..'z', 'A'..'Z', '0'..'9':
         current.add(s)
       of '\n': discard
       else: discard
 
   if current != "": result[^1].children.add(parseToken(current))
-  if result[0].kind == noToken: return @[]
+  if result[^1].kind == noToken: discard result.pop()
+
+  echo result
 
 proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 0): int =
   ctx.symbols.getOrDefault(sym, def)
@@ -204,6 +207,7 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
 
     return
 
+  if token.kind == labToken: return
   assert token.kind == cmdToken, "Error: Need an instruction to execute, not a token."
   case token.op:
   of opHalt: quit()
@@ -271,12 +275,10 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
   
   of opBranch:
     let dst = token.children[0]
-    assert dst.kind == labToken, "Destination Label can't a register nor an immediate value."
     ctx.goToLabel = dst.name
 
   of opBGT, opBGE, opBEZ, opBLT, opBLE:
     let dst = token.children[0]
-    assert dst.kind == labToken, "Destination Label can't a register nor an immediate value."
     if doBranchingOp(token.op, ctx.lastRes):
       ctx.goToLabel = dst.name
 
