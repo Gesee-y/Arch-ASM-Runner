@@ -5,7 +5,7 @@
 #
 # 
 
-import std/[tables, strutils, parseopt]
+import std/[tables, strutils, parseopt, terminal]
 
 type
   ASMOp = enum
@@ -203,7 +203,7 @@ proc parseInstruction(instruction: string): seq[Token] =
  # ######################################################################## EXECUTION ###################################################################### #
 # ######################################################################################################################################################### #
 
-proc getTokenValue(ctx: CodeGenCtx, tok: Token): int =
+proc getTokenValue(ctx: var CodeGenCtx, tok: Token): int =
   case tok.kind:
   of immToken:
     return tok.value
@@ -327,6 +327,38 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
     assert false, "Unknown operation."
 
   # ######################################################################################################################################################### #
+ # ########################################################################## DEBUG ######################################################################## #
+# ######################################################################################################################################################### #
+
+proc writeState(ctx: CodeGenCtx) =
+  var ypos = 5
+  
+  echo " "
+  if ctx.symbols.len == 0:
+    echo "No Symbols"
+  else:
+    echo "# --- SYMBOLS"
+  
+    for (k, v) in ctx.symbols.pairs:
+      echo k, " = ", v
+      inc ypos
+
+  echo "# --- STATE"
+  echo "INSTRUCTION COUNTER = ", ctx.pc
+  echo "LAST RESULT = ", ctx.lastRes
+
+  case ctx.mode:
+  of aemZeroAddr:
+    echo "STACK = ", ctx.stack
+  of aemOneAddr:
+    echo "ACCUMULATOR = ", ctx.acc
+  else:
+    dec ypos 
+  echo ""
+
+  cursorUp(ypos)
+
+  # ######################################################################################################################################################### #
  # ########################################################################## RUNNER ####################################################################### #
 # ######################################################################################################################################################### #
 
@@ -339,12 +371,30 @@ proc runASM(ctx: var CodeGenCtx, instructions: seq[string]) =
 
     inc ctx.pc
 
+proc runASMByStep(ctx: var CodeGenCtx, instructions: seq[string]) =
+  ctx.pc = 0
+  while ctx.pc < instructions.len:
+    echo "> " , instructions[ctx.pc]
+    let tokens = parseInstruction(instructions[ctx.pc])
+    for token in tokens:
+      ctx.execInstruction(token)
+
+    ctx.writeState()
+    inc ctx.pc
+
 proc executeFile(filename: string, mode: ASMExecMode) =
   let code = readFile(filename)
   var ctx = CodeGenCtx(mode: mode)
   var instructions = code.split("\n")
 
   runASM(ctx, instructions)
+
+proc executeFileByStep(filename: string, mode: ASMExecMode) =
+  let code = readFile(filename)
+  var ctx = CodeGenCtx(mode: mode)
+  var instructions = code.split("\n")
+
+  runASMByStep(ctx, instructions)
 
 proc runPrompt() =
   var p = initOptParser()
@@ -369,17 +419,25 @@ proc runPrompt() =
     writeHelp()
 
   let cmd = args[0].toLower
-  if cmd != "r": 
+  case cmd:
+  of "r":
+    if args.len < 2:
+      echo "Command `r` need a file to process."
+      quit(1)
+
+    let file = args[1]
+    executeFile(file, mode)
+  of "s":
+    if args.len < 2:
+      echo "Command `s` need a file to process."
+      quit(1)
+
+    let file = args[1]
+    executeFileByStep(file, mode)
+  else: 
     echo "Unknown command."
     echo USAGE
     quit(1)
-
-  if args.len < 2:
-    echo "Command `r` need a file to process."
-    quit(1)
-
-  let file = args[1]
-  executeFile(file, mode)
 
   # ######################################################################################################################################################### #
  # ####################################################################### ENTRY POINT ##################################################################### #
