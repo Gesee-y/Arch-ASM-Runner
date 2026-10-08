@@ -156,16 +156,21 @@ proc parseInstruction(instruction: string): seq[Token] =
       of ':':
         result[0] = Token(kind: labToken, name: if current == "": lastCurrent else: current)
         result.setLen(2)
+        opFound = false
         current = ""
       of 'a'..'z', 'A'..'Z', '0'..'9':
         current.add(s)
       of '\n': discard
       else: discard
 
-  if current != "": result[^1].children.add(parseToken(current))
+  if current != "": 
+    if result[^1].kind != noToken:
+      result[^1].children.add(parseToken(current))
+    else:
+      op = toOp(current)
+      result[^1] = Token(kind: cmdToken, op: op)
+  
   if result[^1].kind == noToken: discard result.pop()
-
-  echo result
 
 proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 0): int =
   ctx.symbols.getOrDefault(sym, def)
@@ -237,15 +242,15 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
       of immToken:
         assert false, "Error: Can't store stack top in an immediate value."
       of regToken:
-        ctx.stack[^1] = ctx.tryFetchSymbol(reg.name)
+        ctx.symbols[reg.name] = ctx.stack.pop()
       else: discard
 
   of opAdd, opSub, opMul, opDiv:
     case ctx.mode:
     
     of aemZeroAddr:
-      let b = ctx.stack.pop()
-      ctx.stack[^1] = doArithmeticOp(token.op, ctx.stack[^1], b)
+      let a = ctx.stack.pop()
+      ctx.stack[^1] = doArithmeticOp(token.op, a, ctx.stack[^1])
       ctx.lastRes = ctx.stack[^1] 
     
     of aemOneAddr:
@@ -292,8 +297,8 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
   of opPrint:
     assert token.children.len >= 1, "Error: PRINT instruction need an operand."
     
-    let reg = token.children[0]
-    echo ctx.getTokenValue(reg)
+    for reg in token.children:
+      echo ctx.getTokenValue(reg)
   else: 
     assert false, "Unknown operation."
 
