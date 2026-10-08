@@ -2,7 +2,7 @@
  # ################################################################### PARSER ASM ########################################################################## #
 # ######################################################################################################################################################### #
 
-import std/[tables, strutils]
+import std/[tables, strutils, parseopt]
 
 type
   ASMOp = enum
@@ -66,6 +66,27 @@ type
     lastRes: int
     acc: int
     stack: seq[int]
+
+const 
+  VERSION = "v0.1.0"
+  HOST_PLATFORM = 
+    when defined(windows): "Windows"
+    elif defined(macosx): "MacOS"
+    elif defined(bsd): "FreeBSD"
+    else: "Linux"
+  USAGE = "ASM Compiler for Computer Architecture Course" & VERSION & """
+
+   (c) 2026 Kaptue Talom
+
+Usage:
+  archer [command]
+
+Command:
+  r project.asm: Run the ASM program
+   """
+
+proc writeHelp() = quit(USAGE, QuitSuccess)
+proc writeVersion() = quit(VERSION & " " & HOST_PLATFORM & "\n", QuitSuccess)
 
   # ######################################################################################################
  # #
