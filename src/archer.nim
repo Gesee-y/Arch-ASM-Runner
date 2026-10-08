@@ -42,6 +42,7 @@ type
     aemThreeAddr
 
   TokenKind = enum
+    noToken
     cmdToken
     regToken
     labToken
@@ -74,7 +75,7 @@ const
     elif defined(macosx): "MacOS"
     elif defined(bsd): "FreeBSD"
     else: "Linux"
-  USAGE = "ASM Compiler for Computer Architecture Course" & VERSION & """
+  USAGE = "ASM Compiler for Computer Architecture Course " & VERSION & """
 
    (c) 2026 Kaptue Talom
 
@@ -96,8 +97,8 @@ proc writeVersion() = quit(VERSION & " " & HOST_PLATFORM & "\n", QuitSuccess)
 # ########################################################################################################
 
 proc toOp(op: string): ASMOp =
-  let rawOp = op.toLower()
-  case op:
+  let rawOp = op.toLowerAscii()
+  case rawOp:
   of "exit": opHalt
   of "load": opLoad
   of "store": opStore
@@ -137,8 +138,8 @@ proc parseInstruction(instruction: string): seq[Token] =
   var lastCurrent = ""
   var op: ASMOp = opUnknown
   var opFound = false
-  result.setLen(1)
   
+  result.setLen(1)
   for s in instruction:
     case s:
       of ' ':
@@ -151,13 +152,17 @@ proc parseInstruction(instruction: string): seq[Token] =
       of ',':
         assert current != "", "Empty operand found."
         result[^1].children.add(parseToken(current))
+        current = ""
       of ':':
         result[0] = Token(kind: labToken, name: if current == "": lastCurrent else: current)
         result.setLen(2)
-      of 'a'..'b', 'A'..'B', '0'..'9':
+      of 'a'..'z', 'A'..'Z', '0'..'9':
         current.add(s)
-      else:
-        assert(false, "Invalid character found: `" & s & "`")
+      of '\n': discard
+      else: discard
+
+  if current != "": result[^1].children.add(parseToken(current))
+  if result[0].kind == noToken: return @[]
 
 proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 0): int =
   ctx.symbols.getOrDefault(sym, def)
@@ -297,6 +302,8 @@ proc runASM(ctx: var CodeGenCtx, instructions: seq[string]) =
     let tokens = parseInstruction(instructions[ctx.pc])
     for token in tokens:
       ctx.execInstruction(token)
+
+    inc ctx.pc
 
 proc executeFile(filename: string, mode: ASMExecMode) =
   let code = readFile(filename)
