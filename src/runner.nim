@@ -2,6 +2,8 @@
  # ################################################################### PARSER ASM ########################################################################## #
 # ######################################################################################################################################################### #
 
+import std/[tables, strutils]
+
 type
   ASMOp = enum
     opHalt = 0 # Default op to stop the program
@@ -23,16 +25,15 @@ type
     opBGT = 10
     opBGE = 11
     opBEZ = 12
-    opBE = 13
-    opBLT = 14
-    opBLE = 15
+    opBLT = 13
+    opBLE = 14
 
     # IO
-    opRead = 10
-    opPrint = 11
+    opRead = 15
+    opPrint = 16
 
     # Unknown
-    opUnknown = 12
+    opUnknown = 17
 
   ASMExecMode = enum
     aemZeroAddr
@@ -43,31 +44,35 @@ type
   TokenKind = enum
     cmdToken
     regToken
+    labToken
     immToken
 
   Token = object
     case kind: TokenKind
     of cmdToken:
       op: ASMOp
-    of regToken:
+    of regToken, labToken:
       name: string
     else:
       value: int
     
     children: seq[Token]
 
-  SymbolTable = object
-    syms: Table[string, int]
-
   CodeGenCtx = object
     mode: ASMExecMode
-    symbols: SymbolTable
+    symbols: Table[string, int]
     pc: int
+    goToLabel: string
+    lastRes: int
     acc: int
     stack: seq[int]
 
+  # ######################################################################################################
+ # #
+# ########################################################################################################
+
 proc toOp(op: string): ASMOp =
-  let rawOp = op.lowercase()
+  let rawOp = op.toLower()
   case op:
   of "exit": opHalt
   of "load": opLoad
@@ -81,7 +86,6 @@ proc toOp(op: string): ASMOp =
   of "branch": opBranch
   of "bgt": opBGT
   of "bge": opBGE
-  of "be": opBE
   of "bez": opBEZ
   of "blt": opBLT
   of "ble": opBLE
@@ -96,16 +100,32 @@ proc parseToken(str: string): Token =
   except:
     return Token(kind: regToken, name: str)
 
-proc parseInstruction(instruction: string): Token =
+proc parseInstruction(instruction: string): seq[Token] =
+  var current = ""
+  var lastCurrent = ""
   var op: ASMOp = opUnknown
-  let data = instruction.split(" ")
-  op = toOp(data[0])
-
-  assert op != opUnknown, "Invalid instruction: " & data[0] & " is not an operation."
-  result = Token(kind: cmdToken, op: op)
-
-  for d in data[1: ^1]:
-    result.children.add(parseToken(d))
+  var opFound = false
+  result.setLen(1)
+  
+  for s in instruction:
+    case s:
+      of ' ':
+        if not opFound and current != "":
+          op = toOp(current)
+          lastCurrent = current
+          current = ""
+          opFound = true
+          result[^1] = Token(kind: cmdToken, op: op)
+      of ',':
+        assert current != "", "Empty operand found."
+        result[^1].children.add(parseToken(current))
+      of ':':
+        result[0] = Token(kind: labToken, name: if current == "": lastCurrent else: current)
+        result.setLen(2)
+      of 'a'..'b', 'A'..'B', '0'..'9':
+        current.add(s)
+      else:
+        assert(false, "Invalid character found: `" & s & "`")
 
 proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 0): int =
   ctx.symbols.getOrDefault(sym, def)
@@ -115,23 +135,38 @@ proc tryFetchSymbol(ctx: CodeGenCtx, sym: string): int =
   ctx.symbols[sym]
 
 proc getTokenValue(ctx: CodeGenCtx, tok: Token): int =
-  case tok:
+  case tok.kind:
   of immToken:
-    return reg.value
+    return tok.value
   of regToken:
-    return ctx.tryFetchSymbol(reg.name)
+    return ctx.tryFetchSymbol(tok.name)
   else:
     assert false, "Can't get value for a command."
 
-proc doArithmeticOp(op: ASMOp, a, b: int):
+proc doArithmeticOp(op: ASMOp, a, b: int): int =
   case op:
   of opAdd: return a + b
   of opSub: return a - b
   of opMul: return a * b
   of opDiv: return a div b
-  else: error("Can't execute non arithmetic operation")
+  else: assert(false, "Can't execute non arithmetic operation")
+
+proc doBranchingOp(op: ASMOp, a: int): bool =
+  case op:
+  of opBGT: return a > 0
+  of opBGE: return a >= 0
+  of opBEZ: return a == 0
+  of opBLT: return a < 0
+  of opBLE: return a <= 0
+  else: assert(false, "Can't execute comparison on non branching operation.")
 
 proc execInstruction(ctx: var CodeGenCtx, token: Token) =
+  if ctx.goToLabel != "":
+    if token.kind == labToken and ctx.goToLabel == token.name:
+      ctx.goToLabel = ""
+
+    return
+
   assert token.kind == cmdToken, "Error: Need an instruction to execute, not a token."
   case token.op:
   of opHalt: quit()
@@ -143,7 +178,7 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
   of opStore:
     let reg = token.children[0]
 
-    case reg:
+    case reg.kind:
       of immToken:
         assert false, "Error: Can't store accumulator in an immediate value."
       of regToken:
@@ -157,7 +192,7 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
   of opPop:
     let reg = token.children[0]
 
-    case reg:
+    case reg.kind:
       of immToken:
         assert false, "Error: Can't store stack top in an immediate value."
       of regToken:
@@ -170,11 +205,13 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
     of aemZeroAddr:
       let b = ctx.stack.pop()
       ctx.stack[^1] = doArithmeticOp(token.op, ctx.stack[^1], b)
+      ctx.lastRes = ctx.stack[^1] 
     
     of aemOneAddr:
       assert token.children.len >= 1, "Error: 1 address ASM need this command to have 1 operands."
       let reg = token.children[0]
       ctx.acc = doArithmeticOp(token.op, ctx.acc, ctx.getTokenValue(reg))
+      ctx.lastRes = ctx.acc
     
     of aemTwoAddr:
       assert token.children.len >= 2, "Error: 2 address ASM need this command to have 2 operands."
@@ -182,7 +219,8 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
       let b = token.children[1]
 
       assert a.kind == regToken, "Destination register can't be an immediate value."
-      ctx.symbols[a.name] = doArithmeticOp(token.op, ctx.symbols[a.name], ctx.getTokenValue(b)()
+      ctx.symbols[a.name] = doArithmeticOp(token.op, ctx.symbols[a.name], ctx.getTokenValue(b))
+      ctx.lastRes = ctx.symbols[a.name]
 
     of aemThreeAddr:
       assert token.children.len >= 3, "Error: 3 address ASM need this command to have 3 operands."
@@ -192,24 +230,47 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
 
       assert a.kind == regToken, "Destination register can't be an immediate value."
       ctx.symbols[a.name] = doArithmeticOp(token.op, ctx.getTokenValue(b), ctx.getTokenValue(c))
+      ctx.lastRes = ctx.symbols[a.name]
+  
+  of opBranch:
+    let dst = token.children[0]
+    assert dst.kind == labToken, "Destination Label can't a register nor an immediate value."
+    ctx.goToLabel = dst.name
+
+  of opBGT, opBGE, opBEZ, opBLT, opBLE:
+    let dst = token.children[0]
+    assert dst.kind == labToken, "Destination Label can't a register nor an immediate value."
+    if doBranchingOp(token.op, ctx.lastRes):
+      ctx.goToLabel = dst.name
 
   of opRead:
     assert token.children.len >= 1, "Error: READ instruction need a destination register."
     let reg = token.children[0]
 
     assert reg.kind == regToken, "Destination register can't be an immediate value."
-    ctx.symbols[reg.name] = parseInt(readLine())
+    ctx.symbols[reg.name] = parseInt(readLine(stdin))
 
   of opPrint:
     assert token.children.len >= 1, "Error: PRINT instruction need an operand."
     
     let reg = token.children[0]
     echo ctx.getTokenValue(reg)
+  else: 
+    assert false, "Unknown operation."
 
 
 proc runASM(ctx: var CodeGenCtx, instructions: seq[string]) =
   ctx.pc = 0
   while ctx.pc < instructions.len:
     let tokens = parseInstruction(instructions[ctx.pc])
-    ctx.execInstruction(tokens)
+    for token in tokens:
+      ctx.execInstruction(token)
 
+proc executeFile(filename: string, mode: ASMExecMode) =
+  let code = readFile(filename)
+  var ctx = CodeGenCtx(mode: mode)
+  var instructions = code.split("\n")
+
+  runASM(ctx, instructions)
+
+proc runPrompt()
