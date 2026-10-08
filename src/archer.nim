@@ -172,7 +172,7 @@ proc parseInstruction(instruction: string): seq[Token] =
   
   if result[^1].kind == noToken: discard result.pop()
 
-proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 0): int =
+proc fetchSymbol(ctx: var CodeGenCtx, sym: string, def = 1): int =
   ctx.symbols.getOrDefault(sym, def)
 
 proc tryFetchSymbol(ctx: CodeGenCtx, sym: string): int =
@@ -184,7 +184,7 @@ proc getTokenValue(ctx: CodeGenCtx, tok: Token): int =
   of immToken:
     return tok.value
   of regToken:
-    return ctx.tryFetchSymbol(tok.name)
+    return ctx.fetchSymbol(tok.name)
   else:
     assert false, "Can't get value for a command."
 
