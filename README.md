@@ -24,7 +24,56 @@ PRINT A
 et puis lancer avec:
 
 ```bash
-archer -m:1 r first.arc
+archer -m:2 r first.arc
+```
+
+You can run it step by step with:
+
+```bash
+archer -m:2 s first.arc
+```
+
+Which for an example run produces:
+
+```
+> READ A
+1
+
+# --- SYMBOLS
+A = 1
+# --- STATE
+INSTRUCTION COUNTER = 0
+LAST RESULT = 0
+
+> READ B
+2
+
+# --- SYMBOLS
+B = 2
+A = 1
+# --- STATE
+INSTRUCTION COUNTER = 1
+LAST RESULT = 0
+
+
+> ADD A, B
+
+# --- SYMBOLS
+B = 2
+A = 3
+# --- STATE
+INSTRUCTION COUNTER = 3
+LAST RESULT = 3
+
+> PRINT A
+3
+
+# --- SYMBOLS
+B = 2
+A = 3
+# --- STATE
+INSTRUCTION COUNTER = 4
+LAST RESULT = 3
 ```
 
 ## License

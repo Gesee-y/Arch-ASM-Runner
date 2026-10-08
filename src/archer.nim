@@ -87,6 +87,7 @@ Usage:
 
 Command:
   r project.asm: Run the ASM program
+  s project.asm: Run the ASM program step by step with states and all 
   
 Options:
   -m, --mode: How the ASM code will be run, expected values are 0, 1, 2, 3
@@ -331,9 +332,8 @@ proc execInstruction(ctx: var CodeGenCtx, token: Token) =
 # ######################################################################################################################################################### #
 
 proc writeState(ctx: CodeGenCtx) =
-  var ypos = 5
+  var ypos = 8
   
-  echo " "
   if ctx.symbols.len == 0:
     echo "No Symbols"
   else:
@@ -354,9 +354,8 @@ proc writeState(ctx: CodeGenCtx) =
     echo "ACCUMULATOR = ", ctx.acc
   else:
     dec ypos 
-  echo ""
 
-  cursorUp(ypos)
+  stdout.flushFile()
 
   # ######################################################################################################################################################### #
  # ########################################################################## RUNNER ####################################################################### #
@@ -374,12 +373,19 @@ proc runASM(ctx: var CodeGenCtx, instructions: seq[string]) =
 proc runASMByStep(ctx: var CodeGenCtx, instructions: seq[string]) =
   ctx.pc = 0
   while ctx.pc < instructions.len:
-    echo "> " , instructions[ctx.pc]
     let tokens = parseInstruction(instructions[ctx.pc])
+    let shouldPrompt = tokens.len > 0 and ctx.goToLabel == ""
+    echo ""
+    if shouldPrompt:
+      echo "> " , instructions[ctx.pc]
+    
     for token in tokens:
       ctx.execInstruction(token)
-
-    ctx.writeState()
+    
+    stdout.flushFile()
+    if shouldPrompt:
+      discard readLine(stdin)
+      ctx.writeState()
     inc ctx.pc
 
 proc executeFile(filename: string, mode: ASMExecMode) =
